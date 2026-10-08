@@ -1,0 +1,43 @@
+{
+  "name": "dsh-skill-mimo",
+  "version": "0.1.0",
+  "description": "Reads every Xiaomi MiMo (MiMo Desktop / MiMoCode) skill into the DeepSeek Harness session skill catalog.",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "engines": {
+      "dsh": ">=0.1.0"
+    },
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "files": [
+    "lib",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "dsh-plugin",
+    "cordis",
+    "skill",
+    "mimo",
+    "xiaomi"
+  ],
+  "license": "MIT",
+  "author": "sbVAN",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sbVAN/dsh-skill-mimo.git"
+  },
+  "homepage": "https://github.com/sbVAN/dsh-skill-mimo#readme",
+  "bugs": {
+    "url": "https://github.com/sbVAN/dsh-skill-mimo/issues"
+  }
+}

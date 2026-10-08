@@ -1,0 +1,8 @@
+# dsh-skill-mimo bundle patch：把本插件作为一行插进 profile 的组合。
+#
+# 行名（name）必须是「包名」本身：DSH 的 client-module 扫描会把行名解析成包根，
+# 带子路径的行名会被跳过。本插件是 host-only（没有 dsh.client 半个），
+# 所以只需要这一行。
+- insert:
+    - id: skill-mimo
+      name: dsh-skill-mimo
