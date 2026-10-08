@@ -1,93 +1,64 @@
 # dsh-skill-mimo
 
-把**小米 MiMo（MiMo Desktop / MiMoCode）里的全部 skill**读进 DeepSeek Harness 的会话技能目录。
+DSH 插件。装上之后，小米 MiMo（MiMo Desktop / MiMoCode）里已有的 skill 会进到 DSH 的会话技能目录里。什么时候该用哪个 skill 由你的自然语言描述决定，不用点名。
 
-装上之后，MiMo 那边有的 skill，DSH 这边在会话开头就会拿到一份
-`<available_skills>` 目录（名字 + 描述）；你在对话里用自然语言提到对应场景
-（例如「帮我做个 PPT」「画一张海报」「调研一下这个库」「写个 three.js 小游戏」），
-模型就能按描述命中并调用 `skill` 工具加载它的完整说明。
+## 扫描范围
 
-这是一个纯 host 插件：在 `ctx.skills` 上再注册一个 provider（`mimo`），
-不碰 DSH 原有的 `filesystem` provider。
+MiMo 的 skill 不在一处，插件把这些地方都扫一遍：
 
-## 读哪些来源
+- `~/.config/mimocode/skills/`：MiMoCode 的全局 skill，目录名就是 skill 名
+- `<项目根>/.mimocode/skills/` 和 `<项目根>/.mimocode/skill/`：项目级，允许往下嵌三层
+- `engine-config/skills/`（在 MiMo 用户数据目录下）：引擎内置的那批
+- `extensions.json` 里每个扩展的 `placements.skillDirs`：插件带进来的 skill 目录
+- `~/.agents/skills`、`~/.claude/skills`、`~/.codex/skills`、`~/.opencode/skills`，但只看 MiMo 自己在 `preferences.json` 的 `skillPathCompat` 里开着的那些。MiMo 默认只开 agents，那这里就只扫 agents
 
-按 MiMo 自己的约定，一个 skill 可能躺在这些地方，插件全部会扫：
-
-| 顺序 | 来源 | 路径 | 注册表里的 source |
-|---|---|---|---|
-| 1 | 项目 skill | `<项目根>/.mimocode/skills/<id>/SKILL.md`、`<项目根>/.mimocode/skill/…` | `project-agents` |
-| 2 | 扩展（插件）贡献目录 | `<MiMo 用户数据>/extensions.json` 里每个扩展的 `placements.skillDirs` | `custom` |
-| 3 | 引擎内置 skill | `<MiMo 用户数据>/engine-config/skills/<id>/SKILL.md` | `bundled` |
-| 4 | 全局 MiMoCode skill | `~/.config/mimocode/skills/<id>/SKILL.md` | `custom` |
-| 5 | 品牌兼容根 | `~/.agents/skills`、`~/.claude/skills`、`~/.codex/skills`、`~/.opencode/skills` | `user-agents` |
-
-第 5 组受 MiMo 设置 `preferences.json → skillPathCompat` 控制（MiMo 默认只开 `agents`），
-插件默认尊重这个开关，避免把 MiMo 自己都不认的目录塞进来。
-
-如果 `engine-config/skills` 不存在（例如刚装好还没同步），插件会直接读
-`<MiMo 安装目录>/resources/app.asar` 里的 `/electron/lib/engine/skills`，
-把它解包到 `<DSH_HOME>/cache/dsh-skill-mimo/engine-skills/`，
-这样 skill 里引用的 `references/`、`scripts/` 对模型来说仍是真实磁盘路径。
+引擎内置那批正常是 MiMo 自己同步到 `engine-config/skills` 的。如果这个目录还没有（比如 MiMo 刚装完还没跑过一次），插件会去 `<MiMo 安装目录>/resources/app.asar` 里把 `/electron/lib/engine/skills` 解出来，落在 `<DSH_HOME>/cache/dsh-skill-mimo/`。这么做是为了 skill 里写的 `references/xxx.md`、`scripts/xxx.py` 仍然是磁盘上找得到的真实路径，模型按需读得到；直接指 asar 内部是读不了的。
 
 ## 安装
 
-本插件在 [dsh-market](https://github.com/dsh-market/dsh-market) 收录后，可以直接在市场里搜索安装。
-也支持以下方式：
+市场收录之后能在 DSH 的插件市场里搜到。在那之前：
 
 ```powershell
-# 从 GitHub 仓库安装（推荐）
 dsh plugin add github:sbVAN/dsh-skill-mimo
-
-# 发布到 npm 之后
-dsh plugin add dsh-skill-mimo
-
-# 本地开发：把当前目录链进 profile（改动即时生效）
-dsh plugin add "file:$PWD"
 ```
 
-装完在 profile 的 `cordis.patch.yml` 里应能看到由插件自带补丁插入的行：
+本地开发用 `dsh plugin add "file:$PWD"`，链进 profile，改完重载就生效。
 
-```yaml
-- insert:
-    - id: skill-mimo
-      name: dsh-skill-mimo
-```
+装好后 profile 的 `cordis.patch.yml` 里会多出插件自带补丁插的那一行。
 
-HMR 打开时配置改动即时生效；**替换已安装的包版本仍需重启 DSH**（HMR 的模块监听默认忽略
-`node_modules`）。
+HMR 开着的时候改配置立即生效。但换包版本得重启 DSH，HMR 的模块监听默认跳过 `node_modules`。
 
-## 校验
+## 变了会不会跟上
 
-不依赖 DSH 的本地自测：
+会。每个 skill 根都是递归监听的，所以改 `<root>/<name>/SKILL.md` 的正文或 frontmatter、新增或删掉一个 skill 目录，都会在一秒内重新注册。事件做了 120ms 合并，编辑器保存一次常常打出好几个事件，不合并就会连着重扫好几遍。
+
+根目录本身还不存在的话是没法监听的（比如项目第一次建 `.mimocode/skills`），这个靠一个 3 秒的轮询盯着，出现了就补上监听。
+
+这些是在跑着的 DSH 上量的：改正文立即生效，增删目录一秒内反映，启动后才建的根在下一轮轮询时被发现。
+
+Linux 上 `fs.watch` 不支持递归，会退回非递归的，那边只有根目录的直接增删能察觉到。Windows 和 macOS 没有这个问题。
+
+## 验一下
+
+不装 DSH 也能跑：
 
 ```powershell
 node test/smoke.mjs
 ```
 
-它会挂载插件，打印注册到的全部 skill，并检查名字法、描述、正文非空、
-`provider`/`invocation`/`resourceBase` 这些注册表的硬约束。
+它会挂载插件、打印注册到的 skill，顺便检查名字是不是 kebab-case、描述和正文有没有空、`provider`/`invocation`/`resourceBase` 这些字段注册表认不认。
 
-在 DSH 里校验：
-- 插件是否真的挂上：看 `<DSH_HOME>/cache/dsh-skill-mimo/mounted.json`
-- 注册结果：看同目录的 `last-list.json`（名字列表、命中的根、失败项）
-- 出错时：看 `last-error.json`
-- 模型侧：**开一个新会话**（技能目录在会话首步注入），问一句「你有哪些 skill 可用」，
-  或者直接提一个命中描述的需求
+装好之后开个新会话，问一句"你有哪些 skill 可用"，或者直接提一个能命中某个 skill 描述的需求，看它会不会去加载。
 
-### 诊断文件
+插件只在自己缓存目录写东西，MiMo 那边一个文件都不碰。要排查的时候看这三个：
 
-插件从不写 MiMo 的任何文件，只会在自己的缓存目录留下一份自检记录：
+- `mounted.json`：apply 跑过没有、什么时候、哪个 pid
+- `last-list.json`：最近一次注册，扫了哪些根、进了哪些 skill、有没有失败的
+- `last-error.json`：出错的堆栈，只有出错时才有
 
-| 文件 | 内容 |
-|---|---|
-| `mounted.json` | `apply()` 跑过的心跳：时间、pid、生效配置 |
-| `last-list.json` | 最近一次注册：根目录、注册成功的 skill 名、失败项 |
-| `last-error.json` | 注册抛错时的堆栈（只在出错时出现） |
+## 配置
 
-## 可选配置
-
-不改代码也能调：写 `<DSH_HOME>/skill-mimo.json`（默认 `~/.dsh/skill-mimo.json`）。
+写 `~/.dsh/skill-mimo.json`，不用改代码：
 
 ```json
 {
@@ -104,34 +75,24 @@ node test/smoke.mjs
 }
 ```
 
-`watch: false` 可以关掉目录监听。同名 skill 撞车时，DSH 在同一层内按 rank 取优先者 ——
-本插件用 runtime 注册（rank 250），会盖过 `filesystem` provider（用户根 500、内置 600）
-的同类条目，同时把 DSH 原本没有的补齐。
+`watch: false` 关掉目录监听，`extraSkillDirs` 可以塞额外的 skill 目录。
+
+## 两个踩过的坑
+
+这两处跟直觉不一样，写下来免得以后又踩：
+
+`ctx.skills.registerProvider` 里那个 effect 是绑在技能服务实例自己的 ctx 上的，不是插件的 ctx。插件 fiber 重建的时候（disable/enable、profile 重载）不会把它清掉，于是第一次注册之后每次重载都撞同名、静默失败，表里一直留着第一份 provider。所以现在改用 `ctx.skills.register` 走 runtime 表，那里没有这个问题，rank 也更高（250 对 550），撞名的时候是它赢。
+
+取注册表用的是 `ctx.get('skills')`，不是注入进来的 `ctx.skills`。在 host 层加 agent preset standing composition 这种组合下这两个不一定是同一个对象；注册到错的那份，技能面板和快照里都看得见这些 skill，偏偏模型的 `skill` 工具报 unknown。
 
 ## 卸载
 
-`plugin_manager` 里移除该 bundle，或删掉 profile 的 `cordis.patch.yml` 里的
-`skill-mimo` 行并卸载依赖。
-
-## 实现要点
-
-- **注册走 runtime 表（`ctx.skills.register`），不走 provider**。`registerProvider`
-  内部的 effect 绑定在「服务实例自己的 ctx」上，插件 fiber 重建（disable/enable、
-  profile 重载）不会清掉它：之后每次注册都会撞同名而静默失败，表里永远留着第一份
-  旧 provider。runtime 表没有这个问题。
-- **注册表用 `ctx.get('skills')` 取**。在 host 层 + agent preset standing composition
-  这类部署里，它和注入的 `ctx.skills` 未必是同一个对象；注册到错的那一份时，技能面板
-  与快照里都能看见这些 skill，可模型的 `skill` 工具偏偏报 unknown。
+`plugin_manager` 里移除这个 bundle，或者删掉 profile `cordis.patch.yml` 里的 `skill-mimo` 行，再把依赖卸掉。
 
 ## 已知边界
 
-- 只读：不会改动 MiMo 的任何文件（只有 asar 回退解包会写 DSH 自己的缓存目录）。
-- 一层目录包 + 扁平 `<name>.md` 都认；项目根允许嵌套 3 层。
-- 名字必须是 kebab-case、描述必须非空，否则跳过并在日志里说明原因。
-- 实时同步：目录监听是**递归**的，改 `<root>/<name>/SKILL.md` 的正文或描述、以及新增 /
-  删除 skill 目录，都会在约 1 秒内重新注册；根目录本身在插件启动后才出现时（例如项目
-  第一次建 `.mimocode/skills`），会在下一轮轮询（≤3 秒）被发现并挂上监听。
-- Linux 上 `fs.watch` 不支持递归，会退回非递归：那里只有根目录的直接增删会被察觉，
-  改子目录里的 `SKILL.md` 需要重启 DSH（Windows 与 macOS 不受影响）。
-- runtime 注册的条目固定在 rank 250，不再随配置调整。
-
+- 只读。不写 MiMo 的任何文件，唯一会写的是 DSH 自己的缓存目录（asar 回退解包那里）。
+- 一层目录包（`<name>/SKILL.md`）和扁平 `<name>.md` 都认。
+- 名字必须是 kebab-case，描述不能为空，不合格的跳过并记日志。
+- 正文是注册时读进来的，改了要等 watcher 触发一次刷新（一秒内）。
+- runtime 条目的 rank 固定 250，没法像 provider 那样从配置调。
