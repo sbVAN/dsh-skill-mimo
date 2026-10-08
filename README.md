@@ -62,15 +62,15 @@ HMR 打开时配置改动即时生效；**替换已安装的包版本仍需重�
 不依赖 DSH 的本地自测：
 
 ```powershell
-node test/smoke.mjs "Z:\文件留存\deepseek project"
+node test/smoke.mjs
 ```
 
-它会打印本机 MiMo 的全部 skill，并检查名字法、描述、`provider`/`rank`/`invocation`
-这些 DSH 注册表的硬约束。
+它会挂载插件，打印注册到的全部 skill，并检查名字法、描述、正文非空、
+`provider`/`invocation`/`resourceBase` 这些注册表的硬约束。
 
 在 DSH 里校验：
 - 插件是否真的挂上：看 `<DSH_HOME>/cache/dsh-skill-mimo/mounted.json`
-- 扫描结果：看同目录的 `last-list.json`（名字列表、命中的根、跳过的条目）
+- 注册结果：看同目录的 `last-list.json`（名字列表、命中的根、失败项）
 - 出错时：看 `last-error.json`
 - 模型侧：**开一个新会话**（技能目录在会话首步注入），问一句「你有哪些 skill 可用」，
   或者直接提一个命中描述的需求
@@ -82,8 +82,8 @@ node test/smoke.mjs "Z:\文件留存\deepseek project"
 | 文件 | 内容 |
 |---|---|
 | `mounted.json` | `apply()` 跑过的心跳：时间、pid、生效配置 |
-| `last-list.json` | 最近一次列举：命中的根目录、读到的 skill 名、跳过的条目 |
-| `last-error.json` | 列举抛错时的堆栈（只在出错时出现） |
+| `last-list.json` | 最近一次注册：根目录、注册成功的 skill 名、失败项 |
+| `last-error.json` | 注册抛错时的堆栈（只在出错时出现） |
 
 ## 可选配置
 
@@ -91,7 +91,6 @@ node test/smoke.mjs "Z:\文件留存\deepseek project"
 
 ```json
 {
-  "rank": 550,
   "includeEngineSkills": true,
   "includeUserSkills": true,
   "includeProjectSkills": true,
@@ -105,19 +104,31 @@ node test/smoke.mjs "Z:\文件留存\deepseek project"
 }
 ```
 
-`rank` 决定同名 skill 撞车时谁赢：DSH 注册表在**同一层内按 rank 升序**取第一个，
-所以 550 落在 `filesystem` provider 的用户根（500）之后、内置 bundled（600）之前 ——
-也就是「MiMo 有的、DSH 原本没有的，补上；两边都有的，保留 DSH 的」。
+`watch: false` 可以关掉目录监听。同名 skill 撞车时，DSH 在同一层内按 rank 取优先者 ——
+本插件用 runtime 注册（rank 250），会盖过 `filesystem` provider（用户根 500、内置 600）
+的同类条目，同时把 DSH 原本没有的补齐。
 
 ## 卸载
 
 `plugin_manager` 里移除该 bundle，或删掉 profile 的 `cordis.patch.yml` 里的
 `skill-mimo` 行并卸载依赖。
 
+## 实现要点
+
+- **注册走 runtime 表（`ctx.skills.register`），不走 provider**。`registerProvider`
+  内部的 effect 绑定在「服务实例自己的 ctx」上，插件 fiber 重建（disable/enable、
+  profile 重载）不会清掉它：之后每次注册都会撞同名而静默失败，表里永远留着第一份
+  旧 provider。runtime 表没有这个问题。
+- **注册表用 `ctx.get('skills')` 取**。在 host 层 + agent preset standing composition
+  这类部署里，它和注入的 `ctx.skills` 未必是同一个对象；注册到错的那一份时，技能面板
+  与快照里都能看见这些 skill，可模型的 `skill` 工具偏偏报 unknown。
+
 ## 已知边界
 
 - 只读：不会改动 MiMo 的任何文件（只有 asar 回退解包会写 DSH 自己的缓存目录）。
 - 一层目录包 + 扁平 `<name>.md` 都认；项目根允许嵌套 3 层。
-- 名字必须是 kebab-case、描述必须非空，否则跳过并在日志里说明原因
-  （DSH 的注册表本身也会直接拒绝非法候选）。
-- 正文每次加载时现读，改 `SKILL.md` 正文不需要重启；增删 skill 由 watcher 触发目录刷新。
+- 名字必须是 kebab-case、描述必须非空，否则跳过并在日志里说明原因。
+- 正文在注册时读入，因此改 `SKILL.md` 需要等 watcher 触发一次刷新才生效；
+  增删 skill 同样由 watcher 触发重新注册（约 1 秒内）。
+- runtime 注册的条目固定在 rank 250，不再随配置调整。
+
