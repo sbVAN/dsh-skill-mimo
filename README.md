@@ -50,6 +50,7 @@ node test/smoke.mjs
   "includeBrandRoots": true,
   "includeExtensions": true,
   "ignoreSkillPathCompatibility": false,
+  "excludeSkills": [],
   "extraSkillDirs": [],
   "mimoDataDir": "C:\\Users\\你\\AppData\\Roaming\\Xiaomi MiMo",
   "mimoAppDir": "Z:\\MimoPlatform\\Xiaomi MiMo",
@@ -57,7 +58,7 @@ node test/smoke.mjs
 }
 ```
 
-`watch: false` 关掉监听，`extraSkillDirs` 加额外目录。
+`watch: false` 关掉监听，`extraSkillDirs` 加额外目录，`excludeSkills` 按名字跳过个别 skill（对所有根统一生效）。
 
 ## 卸载
 
