@@ -82,6 +82,33 @@ const names = new Set(skills.map(skill => skill.name))
 const missing = expected.filter(skillName => !names.has(skillName))
 console.log(`\nMiMo 引擎内置 11 个 skill 命中 ${expected.length - missing.length}/${expected.length}`)
 if (missing.length > 0) console.log(`缺失：${missing.join(', ')}`)
+if (missing.length > 0 || skills.length === 0) process.exit(1)
+
+// ── excludeSkills：按名字跳过个别 skill，对所有根统一生效 ─────────────────
+const excluded = new Map()
+const excludeCtx = {
+  logger: { info: () => {}, warn: () => {} },
+  get: serviceName => (serviceName === 'skills' ? excludeCtx.skills : undefined),
+  skills: {
+    register(skill) {
+      excluded.set(skill.name, skill)
+      return () => excluded.delete(skill.name)
+    },
+  },
+  effect(callback) {
+    const dispose = callback()
+    return () => {
+      if (typeof dispose === 'function') dispose()
+    }
+  },
+}
+apply(excludeCtx, { excludeSkills: ['session-chat'] })
+const excludedNames = new Set(excluded.keys())
+console.log(`excludeSkills 排除测试：session-chat ${excludedNames.has('session-chat') ? '仍然注册（FAIL）' : '已跳过（OK）'}，其余注册 ${excluded.size} 个`)
+if (excludedNames.has('session-chat') || excluded.size === 0) {
+  console.log('FAIL：excludeSkills 未生效')
+  process.exit(1)
+}
 
 // 轮询定时器会吊住事件循环，测完直接退。
-process.exit(missing.length > 0 || skills.length === 0 ? 1 : 0)
+process.exit(0)
